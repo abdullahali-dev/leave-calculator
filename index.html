@@ -27,10 +27,10 @@
                     <div class="col-12 mt-3 form-group">
                         <textarea placeholder="انسخ البيانات من شاشة النظام او من اكسل والصق هنا، لازم تكون 5 اعمدة الثالث تاريخ بداية الإجازه والخامس المدة" id="tblInput" class="form-control mb-3" rows="20"></textarea>
                     </div>
+                    <div class="col-12 text-danger my2" id="error"></div>
                     <div class="col-12">
                         <button class="btn btn-primary" onclick="calc()">احسب</button>
                     </div>
-                    <div class="col-12 text-danger my2" id="error"></div>
                     <div class="col-12 mt-3">
                         <table class="table table-responsive table-striped text-center">
                             <thead>
@@ -64,6 +64,7 @@
         });
 
         function calc() {
+            setResult();
             if (!checkInputs()) return;
             let oldRemaining = Number(document.querySelector('#oldRemaining').value)
             const vacations = parseInputAsArrayOfObjects();
@@ -118,6 +119,8 @@
         function setResult(vacations) {
             const resTblBody = document.querySelector('#resTblBody');
             resTblBody.innerHTML = '';
+            if(!vacations) 
+                return;
             
             const lastVacation = vacations[vacations.length-1];
             const remaining = lastVacation.remaining;
