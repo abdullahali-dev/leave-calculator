@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <title>Calculator</title>
+</head>
+
+<body>
+    <div class="container mt-5" dir="rtl">
+        <div class="card">
+            <div class="card-body form">
+                <div class="row justify-content-center">
+                    <div class="col-12 text-danger my2" id="error"></div>
+                    <div class="col-12 form-group">
+                        <label for="date">تاريخ التقاعد</label>
+                        <input class="form-control" type="text" name="date" id="retirementDate"
+                            onchange="retirementDateChanged(this.value)">
+                    </div>
+                    <div class="col-12 form-group mt-2">
+                        <label for="date">الرصيد السابق</label>
+                        <input class="form-control" type="number" value="" id="oldRemaining">
+                    </div>
+                    <div class="col-12 mt-3 form-group">
+                        <textarea placeholder="1	إجازة عادية	1443/03/17	1444/03/10	17" id="tblInput" class="form-control mb-3" rows="20"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-primary" onclick="calc()">احسب</button>
+                    </div>
+                    <div class="col-12 mt-3">
+                        <table class="table table-responsive table-striped text-center">
+                            <thead>
+                                <tr>
+                                    <th>التاريخ</th>
+                                    <th>المدة</th>
+                                    <th>الرصيد الحالي</th>
+                                    <th>من الرصيد الحالي</th>
+                                    <th>باقي الرصيد الحالي</th>
+                                    <th>من الرصيد السابق</th>
+                                    <th>باقي الرصيد السابق</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resTblBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.30.1/moment.min.js" crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment-hijri@3.0.0/moment-hijri.min.js"></script>
+    <script type="text/javascript" lang="js">
+        var retirementDate = null;
+
+        document.addEventListener("DOMContentLoaded", function () {
+            retirementDate = moment();
+            document.querySelector('#retirementDate').value = retirementDate.format("iYYYY-iMM-iDD");
+        });
+
+        function calc() {
+            if (!checkInputs()) return;
+            let oldRemaining = Number(document.querySelector('#oldRemaining').value)
+            const vacations = parseInputAsArrayOfObjects();
+
+            for (let i = 0; i < vacations.length; i++) {
+                let start = null;
+                let end = null;
+                if (i == 0) {
+                    start = moment('1439-07-02', 'iYYYY-iMM-iDD');
+                    end = vacations[i].startDate;
+                }
+                /*
+                else if (i == vacations.length - 1) {
+                    start = vacations[i].startDate
+                    end = retirementDate;
+                }
+                
+                */
+                else {
+                    start = vacations[i - 1].startDate
+                    end = vacations[i].startDate;
+                }
+                const days = end.diff(start, "days");
+                console.log('s:', start.format('Y-M-D'), 'e:', end.format('Y-M-D'), 'd:', days)
+
+                vacations[i].available = roundToTwo((vacations[i].available ?? 0) + roundToTwo(days * 0.1))
+                vacations[i].remaining = roundToTwo(vacations[i].available - vacations[i].vacation);
+                if (vacations[i].remaining > 0) {
+                    if (i < vacations.length - 1) {
+                        vacations[i + 1].available = vacations[i].remaining;
+                    }
+                    vacations[i].fromRemaining = vacations[i].vacation;
+                    vacations[i].fromOldRemaining = 0;
+                } else {
+                    vacations[i].fromRemaining = vacations[i].available;
+                    vacations[i].fromOldRemaining = Math.abs(vacations[i].remaining);
+                    vacations[i].remaining = 0;
+                }
+                oldRemaining -= vacations[i].fromOldRemaining;
+                vacations[i].oldRemaining = roundToTwo(oldRemaining);
+
+            }
+            console.table(vacations.map(x => {
+                return {
+                    ...x,
+                    startDate: x.startDate.format('iYYYY-iMM-iDD')
+                }
+            }));
+            setResult(vacations);
+        }
+
+        function setResult(vacations) {
+            const resTblBody = document.querySelector('#resTblBody');
+            resTblBody.innerHTML = '';
+            
+            const lastVacation = vacations[vacations.length-1];
+            const remaining = lastVacation.remaining;
+            let compensation = lastVacation.remaining > 72 ? 72 : lastVacation.remaining;
+            const finalCompensation = roundToTwo(compensation + lastVacation.oldRemaining > 180 ? 180 : lastVacation.oldRemaining + compensation);
+
+            let idx = 0;
+            vacations.forEach(x => {
+                const isRetirementRow = vacations.length-1 == idx;
+                resTblBody.innerHTML += `
+                    <tr class="${isRetirementRow ? 'table-success' : ''}">
+                        <td>${x.startDate.format('iYYYY-iMM-iDD')}</td>
+                        <td>${isRetirementRow ? 'تقاعد' : x.vacation}</td>
+                        <td>${x.available}</td>
+                        <td>${x.fromRemaining}</td>
+                        ${isRetirementRow && x.remaining > 72 ? `<td><span class="text-decoration-line-through">${x.remaining}</span> 72</td>` 
+                        : `<td>${x.remaining}</td>` }
+                        <td>${x.fromOldRemaining}</td>
+                        ${isRetirementRow && ((x.oldRemaining + compensation) - 180 > 0) 
+                        ? `<td><span class="text-decoration-line-through">${x.oldRemaining}</span> ${finalCompensation - compensation} </td>` 
+                        : `<td>${x.oldRemaining}</td>` }
+                    </tr>
+                `;
+                idx++;
+            })
+      
+
+            resTblBody.innerHTML += `
+                <tr>
+                    <th colspan="5">التعويض</th>
+                    <td colspan="2">${finalCompensation}</td>
+                </tr>
+            `;
+        }
+        function roundToTwo(num) {
+            return +(Math.round(num + "e+2") + "e-2");
+        }
+
+        function checkInputs() {
+            setError('');
+            if (!retirementDateChanged(document.querySelector('#retirementDate').value))
+                return false;
+
+            if (!document.querySelector('#oldRemaining').value) {
+                setError('يجب إدخال الرصيد السابق');
+                return;
+            }
+
+            const input = document.querySelector('#tblInput').value.trim();
+            if (!input) {
+                setError('يجب إدخال الإجازات');
+                return false;
+            }
+            const rows = input.split('\n');
+            if (rows.length == 0) {
+                setError('تأكد من صيغة البيانات المدخله');
+                return false;
+            }
+            if (!rows.every(x => {
+                const cols = x.split('\t');
+                if (cols.length != 5 || !moment.isMoment(parseHijriIfDate(cols[2])) || isNaN(cols[4]))
+                    return false;
+
+                return true;
+            })) {
+                setError(
+                    `يجب أن يكون العمود الثالث بداية الإجازة(تاريخ) والعمود الخامس المدة (رقم)
+                    <br>
+                    مثال:
+                    <br>
+                    <textarea class="form-control disabled" disabled>2	إجازة عادية	1443/03/20	1444/03/21	2</textarea>
+                    `);
+                return false;
+            }
+            return true;
+        }
+        function parseInputAsArrayOfObjects() {
+            const input = document.querySelector('#tblInput').value;
+
+            const rawRows = input.split('\n');
+            const headersArray = [
+                "index",
+                "type",
+                "startDate",
+                "endDate",
+                "vacation"
+            ];
+
+            let output = [
+                /*
+                    {
+                        index: -1,
+                        type: '-',
+                        startDate: moment('1439-07-02', 'iYYYY-iMM-iDD'),
+                        endDate: moment('1439-07-02', 'iYYYY-iMM-iDD'),
+                        vacation: 0
+                    }
+                */
+            ];
+            for (let i = 0; i < rawRows.length; i++) {
+                const values = rawRows[i].split('\t').map(value => value.trim());
+
+                if (values.length <= 1 && values[0] === '') continue;
+
+                const rowObject = {
+                    idx: i
+                };
+                headersArray.forEach((header, index) => {
+                    const val = values[index] !== undefined ? values[index] : '';
+                    if (!isNaN(val)) {
+                        rowObject[header] = Number(val);
+                    }
+                    else {
+                        rowObject[header] = parseHijriIfDate(val);
+                    }
+
+                });
+                output.push(rowObject);
+            }
+            output.push(
+                {
+                    index: -2,
+                    type: '-',
+                    startDate: retirementDate,
+                    endDate: retirementDate,
+                    vacation: 0
+                }
+            )
+            /*
+    */
+            output = output.sort((a, b) => a.startDate.diff(b.startDate));
+            console.log(output.map(x => x.startDate.format('YYYY-MM')));
+
+            return output;
+        }
+
+        function parseHijriIfDate(value) {
+            if (value == null) return value;
+            if (typeof value !== "string") return value;
+
+            const original = value;
+            let s = value.trim();
+
+            s = s.replace(/هـ/g, "").trim();
+            s = s.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+
+            if (!/^\d{4}[\s\/\\.-]+\d{1,2}[\s\/\\.-]+\d{1,2}$/.test(s)) {
+                return original;
+            }
+
+            s = s.replace(/[\/\\.\s]+/g, "-").replace(/-+/g, "-");
+
+            const m = moment(s, ["iYYYY-iMM-iDD"]);
+
+            return m.isValid() ? m : original;
+        }
+
+        function retirementDateChanged(val) {
+            setError('');
+            if (!/^\d{4}[\s\/\\.-]+\d{1,2}[\s\/\\.-]+\d{1,2}$/.test(val)) {
+                setError('أدخل التاريخ بالصيغة 01-01-1400');
+                return false;
+            }
+            const momentDate = moment(val, ['iYYYY-iMM-iDD', 'iYYYY/iMM/iDD']);
+            if (!momentDate.isValid()) {
+                setError('التاريخ غير صحيح')
+                return false;
+            }
+            retirementDate = momentDate;
+            return true;
+        }
+
+        function setError(error) {
+            document.querySelector('#error').innerHTML = error;
+        }
+    </script>
+</body>
+
+</html>
