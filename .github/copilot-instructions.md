@@ -1,0 +1,6 @@
+- [x] Create Vite + Vue 3 + TypeScript project
+- [ ] Implement calendar utilities (Umm al‑Qura + arithmetical Hijri)
+- [ ] Implement LeaveCalculator and DaysCounter components
+- [ ] Add unit tests for calendar and accrual logic
+- [ ] Create README and .gitignore
+- [ ] Run tests and ensure project builds
