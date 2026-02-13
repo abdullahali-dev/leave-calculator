@@ -67,7 +67,11 @@ export default defineComponent({
   components: { HijriDatePicker },
   props: { calendarMode: { type: String, required: true } },
   setup(props) {
-    const retirementModel = ref<string>('1445-07-01')
+    const [currentHijriYear, currentHijriMonth] = todayHijriString(props.calendarMode as any)
+      .split('-')
+      .map(Number)
+    const initialRetirementYear = currentHijriMonth < 7 ? currentHijriYear - 1 : currentHijriYear
+    const retirementModel = ref<string>(`${initialRetirementYear}-07-01`)
     const retirementGregorian = ref<any>(parseHijriStringToGregorian(retirementModel.value, props.calendarMode as any))
     const oldRemaining = ref<number>(0)
     const tblInput = ref('')

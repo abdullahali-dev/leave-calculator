@@ -47,7 +47,7 @@
 </template>
 
 <script lang="ts">
-import { ref, watchEffect } from 'vue'
+import { ref, watch } from 'vue'
 import LeaveCalculator from './components/LeaveCalculator.vue'
 import DaysCounter from './components/DaysCounter.vue'
 
@@ -56,18 +56,10 @@ export default {
   setup() {
     const view = ref<'leave'|'days'>('leave')
     const calendarMode = ref<'ummalqura'|'islamic'>('ummalqura')
-    const darkMode = ref(true)
+    const savedDarkMode = localStorage.getItem('darkMode')
+    const darkMode = ref(savedDarkMode === 'true' ? true : savedDarkMode === 'false' ? false : false)
 
-    // Load dark mode preference from localStorage
-    watchEffect(() => {
-      const saved = localStorage.getItem('darkMode')
-      if (saved !== null) {
-        darkMode.value = JSON.parse(saved)
-      }
-    })
-
-    // Save dark mode preference to localStorage
-    watchEffect(() => {
+    watch(darkMode, () => {
       localStorage.setItem('darkMode', JSON.stringify(darkMode.value))
     })
 
