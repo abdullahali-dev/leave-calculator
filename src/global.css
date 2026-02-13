@@ -25,6 +25,8 @@ html, body {
   --bs-border-color: #495057;
   --bs-card-bg: #2d2d2d;
   background-color: #1a1a1a;
+  --bs-primary: #047857;
+  --bs-primary-rgb: 4, 120, 87;
 }
 
 /* Card styling for dark mode */
