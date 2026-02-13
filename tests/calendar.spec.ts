@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseHijriStringToGregorian, formatHijri, setCalendarMode } from '../src/utils/calendar'
+import { parseHijriStringToGregorian, formatHijri, setCalendarMode } from '../src/utils'
 
 describe('calendar conversions', () => {
   it('parses and formats using umm alqura', () => {

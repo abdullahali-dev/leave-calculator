@@ -11,7 +11,7 @@
   "dependencies": {
     "bootstrap": "^5.3.8",
     "dayjs": "^1.11.9",
-    "ummalqura-js": "^2.0.3"
+    "@umalqura/core": "^0.0.7"
   },
   "devDependencies": {
     "@types/node": "*",

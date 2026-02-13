@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import { parseHijriStringToGregorian, formatHijri, getHijriParts } from './calendar'
 
 export interface VacationRow {
   idx: number
@@ -12,48 +13,76 @@ export interface VacationRow {
   oldRemaining?: number
 }
 
+function calculateHijriDays(startDate: dayjs.Dayjs, endDate: dayjs.Dayjs): number {
+  // Calculate days based on Hijri calendar with 360-day year
+  const startH = getHijriParts(startDate)
+  const endH = getHijriParts(endDate)
+  
+  // Convert Hijri dates to absolute days
+  // Each Hijri year is 354 or 355 days (average 354.36667)
+  // But we want to use 360 days per year for accrual calculation
+  const hijriToAbsolute = (y: number, m: number, d: number) => {
+    return d + Math.ceil(29.5 * (m - 1)) + (y - 1) * 354 + Math.floor((3 + 11 * y) / 30)
+  }
+  
+  const startAbsolute = hijriToAbsolute(startH.hy, startH.hm, startH.hd)
+  const endAbsolute = hijriToAbsolute(endH.hy, endH.hm, endH.hd)
+  
+  // The actual difference, then convert to 360-day year basis
+  const actualDays = endAbsolute - startAbsolute
+  return Math.floor(actualDays * (360 / 354.36667)) // 354.36667 is average Hijri year
+}
+
 export function calculateAccruals(vacations: VacationRow[], retirement: dayjs.Dayjs, oldRemainingStart: number) {
   // keep same business rules from original app
-  // baseline start date for accruals
-  const baseline = dayjs.utc('1439-07-02', 'iYYYY-iMM-iDD') // placeholder, not a real parse for dayjs; users should set via hijri conversion if needed
+  // baseline start date for accruals (convert Hijri baseline to Gregorian)
+  const baseline = parseHijriStringToGregorian('1439-07-02', 'ummalqura')
 
   // ensure all dates are dayjs
-  const v = vacations.map(x => ({ ...x }))
+  const v: VacationRow[] = vacations.map(x => ({ ...x }))
 
+  // carry for accrual decimals
+  let accrualCarry = 0;
   // compute accruals: for each row, compute days between previous start and current start (first from baseline)
   for (let i = 0; i < v.length; i++) {
-    let start = null as any
-    let end = null as any
-    if (i === 0) {
-      // baseline should be earlier; we keep using difference between baseline and first vacation start
-      start = baseline
-      end = v[i].startDate
-    } else {
-      start = v[i - 1].startDate
-      end = v[i].startDate
-    }
-    const days = end.diff(start, 'day')
+    const row = v[i]!
+    if (!row) continue
+    const start = i === 0 ? baseline : v[i - 1]!.startDate
+    const end = row.startDate
 
-    v[i].available = roundToTwo((v[i].available ?? 0) + roundToTwo(days * 0.1))
-    v[i].remaining = roundToTwo((v[i].available ?? 0) - (v[i].vacation ?? 0))
-    if (v[i].remaining > 0) {
+    const days = calculateHijriDays(start, end)
+
+    const accrual = days * 0.1;
+    const accrualInteger = Math.floor(accrual);
+    const accrualDecimal = accrual - accrualInteger;
+    accrualCarry = roundToTwo(accrualCarry + accrualDecimal);
+    const carryInteger = Math.floor(accrualCarry);
+    const addToAvailable = accrualInteger + carryInteger;
+    accrualCarry = roundToTwo(accrualCarry - carryInteger);
+    row.available = roundToTwo((row.available ?? 0) + addToAvailable);
+
+    row.remaining = roundToTwo((row.available ?? 0) - (row.vacation ?? 0))
+
+    const rem = row.remaining ?? 0
+    if (rem > 0) {
       if (i < v.length - 1) {
-        v[i + 1].available = v[i].remaining
+        v[i + 1]!.available = rem
       }
-      v[i].fromRemaining = v[i].vacation
-      v[i].fromOldRemaining = 0
+      const vacAmount = Number(row.vacation ?? 0)
+      row.fromRemaining = vacAmount
+      row.fromOldRemaining = 0
     } else {
-      v[i].fromRemaining = v[i].available
-      v[i].fromOldRemaining = Math.abs(v[i].remaining)
-      v[i].remaining = 0
+      row.fromRemaining = row.available
+      row.fromOldRemaining = Math.abs(rem)
+      row.remaining = 0
     }
-    oldRemainingStart -= v[i].fromOldRemaining || 0
-    v[i].oldRemaining = roundToTwo(oldRemainingStart)
+    oldRemainingStart -= Number(row.fromOldRemaining ?? 0)
+    row.oldRemaining = roundToTwo(Number(oldRemainingStart) || 0)
   }
 
   return v
 }
 
 function roundToTwo(num:number) {
-  return +(Math.round(num + "e+2") + "e-2")
+  return Math.round(num * 100) / 100
 }

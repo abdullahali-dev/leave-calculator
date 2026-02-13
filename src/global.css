@@ -1,0 +1,93 @@
+/* Global Styles */
+
+:root {
+  --bs-dark-rgb: 33, 37, 41;
+  --bs-light-rgb: 248, 249, 250;
+}
+
+html, body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+[data-bs-theme="light"] {
+  --bs-body-bg: #ffffff;
+  --bs-body-color: #212529;
+  --bs-border-color: #dee2e6;
+  --bs-card-bg: #f8f9fa;
+  background-color: #ffffff;
+  --bs-primary: #047857;
+  --bs-primary-rgb: 4, 120, 87;
+}
+
+[data-bs-theme="dark"] {
+  --bs-body-bg: #1a1a1a;
+  --bs-body-color: #e9ecef;
+  --bs-border-color: #495057;
+  --bs-card-bg: #2d2d2d;
+  background-color: #1a1a1a;
+}
+
+/* Card styling for dark mode */
+[data-bs-theme="dark"] .card {
+  background-color: var(--bs-card-bg);
+  border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] textarea {
+  background-color: #2d2d2d;
+  color: #e9ecef;
+  border-color: #495057;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus,
+[data-bs-theme="dark"] textarea:focus {
+  background-color: #2d2d2d;
+  color: #e9ecef;
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+[data-bs-theme="dark"] .table {
+  border-color: #495057;
+}
+
+[data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+[data-bs-theme="dark"] .table-success {
+  background-color: rgba(25, 135, 84, 0.25);
+}
+
+[data-bs-theme="dark"] .text-danger {
+  color: #dc3545 !important;
+}
+
+[data-bs-theme="dark"] .text-muted {
+  color: #adb5bd !important;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary {
+  color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary:hover {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+  color: #ffffff;
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Disable transitions for performance on larger elements */
+.navbar,
+.table {
+  transition: none;
+}

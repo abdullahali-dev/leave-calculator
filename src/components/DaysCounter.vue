@@ -5,17 +5,12 @@
         <div class="row g-2">
           <div class="col-md-6">
             <small>تاريخ البداية (Hijri)</small>
-            <div class="d-flex gap-2 mt-2">
-              <input v-model="startInput" class="form-control" />
-              <button class="btn btn-outline-secondary" @click="setToday('start')">اليوم</button>
-            </div>
+            <HijriDatePicker v-model="startModel" :calendarMode="calendarMode" @update:gregorian="onStartGregorianUpdate" />
           </div>
+
           <div class="col-md-6">
             <small>تاريخ النهاية (Hijri)</small>
-            <div class="d-flex gap-2 mt-2">
-              <input v-model="endInput" class="form-control" />
-              <button class="btn btn-outline-secondary" @click="setToday('end')">اليوم</button>
-            </div>
+            <HijriDatePicker v-model="endModel" :calendarMode="calendarMode" @update:gregorian="onEndGregorianUpdate" />
           </div>
 
           <div class="col-12 mt-3 d-flex gap-2 align-items-center">
@@ -68,12 +63,24 @@
 
 <script lang="ts">
 import { defineComponent, ref } from 'vue'
-import { parseHijriStringToGregorian, formatHijri, setCalendarMode, todayHijriString } from '../utils/calendar'
+import { parseHijriStringToGregorian, formatHijri, setCalendarMode, todayHijriString, hijriPartsToGregorian, daysInHijriMonth } from '../utils/calendar'
 import dayjs from 'dayjs'
+import HijriDatePicker from './HijriDatePicker.vue'
 
-export default defineComponent({ props: { calendarMode: { type: String, required: true } }, setup(props) {
-  const startInput = ref(todayHijriString(props.calendarMode as any))
-  const endInput = ref(todayHijriString(props.calendarMode as any))
+export default defineComponent({
+  components: { HijriDatePicker },
+  props: { calendarMode: { type: String, required: true } },
+  setup(props) {
+  // Dropdown-based hijri pickers
+  const currentIYear = Number(formatHijri(dayjs(), props.calendarMode as any).split('-')[0])
+  const years = ref<number[]>([])
+  const months = ref<number[]>(Array.from({ length: 12 }, (_, i) => i + 1))
+
+  const startModel = ref<string>(todayHijriString(props.calendarMode as any))
+  const endModel = ref<string>(todayHijriString(props.calendarMode as any))
+  const startGregorian = ref<any>(parseHijriStringToGregorian(startModel.value, props.calendarMode as any))
+  const endGregorian = ref<any>(parseHijriStringToGregorian(endModel.value, props.calendarMode as any))
+
   const includeStart = ref(true)
   const includeEnd = ref(true)
   const error = ref('')
@@ -84,23 +91,46 @@ export default defineComponent({ props: { calendarMode: { type: String, required
   const summaryFrom = ref('')
   const summaryTo = ref('')
 
-  function setToday(which: 'start'|'end') {
-    if (which === 'start') startInput.value = todayHijriString(props.calendarMode as any)
-    else endInput.value = todayHijriString(props.calendarMode as any)
+  function populateYears() {
+    const start = 1400
+    const end = currentIYear + 2
+    years.value = []
+    for (let y = start; y <= end; y++) years.value.push(y)
   }
+
+
+
+  function setToday(which: 'start'|'end') {
+    const s = todayHijriString(props.calendarMode as any)
+    if (which === 'start') {
+      startModel.value = s
+      startGregorian.value = parseHijriStringToGregorian(s, props.calendarMode as any)
+    } else {
+      endModel.value = s
+      endGregorian.value = parseHijriStringToGregorian(s, props.calendarMode as any)
+    }
+  }
+
+  populateYears()
+  setToday('start')
+  setToday('end')
+
+  function onStartGregorianUpdate(g: any) { startGregorian.value = g }
+  function onEndGregorianUpdate(g: any) { endGregorian.value = g }
 
   function countDays() {
     error.value = ''
     setCalendarMode(props.calendarMode as any)
     try {
-      let s = parseHijriStringToGregorian(startInput.value, props.calendarMode as any)
-      let e = parseHijriStringToGregorian(endInput.value, props.calendarMode as any)
-      if (!s.isValid() || !e.isValid()) throw new Error('التاريخ غير صالح')
-      // ensure order
-      if (s.isAfter(e)) { const t = s; s = e; e = t }
+      const s = startGregorian.value
+      const e = endGregorian.value
+      if (!s || !e || !s.isValid() || !e.isValid()) throw new Error('التاريخ غير صالح')
+      // ensure s <= e
+      let s2 = s.clone(), e2 = e.clone()
+      if (s2.isAfter(e2)) { const tmp = s2; s2 = e2; e2 = tmp }
 
-      const firstMomentForSegments = includeStart.value ? s.clone() : s.clone().add(1, 'day')
-      const lastMomentForSegments = includeEnd.value ? e.clone() : e.clone().subtract(1, 'day')
+      const firstMomentForSegments = includeStart.value ? s2.clone() : s2.clone().add(1, 'day')
+      const lastMomentForSegments = includeEnd.value ? e2.clone() : e2.clone().subtract(1, 'day')
 
       let total = 0
       const newRows: any[] = []
@@ -108,13 +138,16 @@ export default defineComponent({ props: { calendarMode: { type: String, required
       if (!lastMomentForSegments.isBefore(firstMomentForSegments)) {
         total = lastMomentForSegments.diff(firstMomentForSegments, 'day') + 1
 
-        let curYear = Number(firstMomentForSegments.format('iYYYY'))
-        let curMonth = Number(firstMomentForSegments.format('iMM'))
-        const endMonthKey = lastMomentForSegments.format('iYYYY-iMM')
+        const firstHijri = formatHijri(firstMomentForSegments, props.calendarMode as any)
+        let [curYear, curMonth] = firstHijri.split('-').map(p => Number(p))
+        const endMonthKey = formatHijri(lastMomentForSegments, props.calendarMode as any).split('-').slice(0,2).join('-')
 
+        let iterations = 0
         while (true) {
-          const monthStart = parseHijriStringToGregorian(`${String(curYear).padStart(4,'0')}-${String(curMonth).padStart(2,'0')}-01`, props.calendarMode as any)
-          const daysInMonth = Number(monthStart.format('iDaysInMonth')) || 30
+          iterations++
+          if (iterations > 500) { console.warn('days counter loop exceeded max iterations'); break }
+          const monthStart = hijriPartsToGregorian(curYear, curMonth, 1, props.calendarMode as any)
+          const daysInMonth = daysInHijriMonth(curYear, curMonth, props.calendarMode as any)
           const monthEnd = monthStart.clone().add(daysInMonth - 1, 'day')
 
           const segStart = firstMomentForSegments.isAfter(monthStart) ? firstMomentForSegments.clone() : monthStart.clone()
@@ -123,27 +156,27 @@ export default defineComponent({ props: { calendarMode: { type: String, required
           if (!segEndCandidate.isBefore(segStart)) {
             const segDays = segEndCandidate.diff(segStart, 'day') + 1
             newRows.push({
-              month: monthStart.format('iYYYY-iMM'),
-              from: `${segStart.format('iYYYY-iMM-iDD')}<br><small>${segStart.format('YYYY-MM-DD')}</small>`,
-              to: `${segEndCandidate.format('iYYYY-iMM-iDD')}<br><small>${segEndCandidate.format('YYYY-MM-DD')}</small>`,
+              month: formatHijri(monthStart, props.calendarMode as any).split('-').slice(0,2).join('-'),
+              from: `${formatHijri(segStart, props.calendarMode as any)}<br><small>${segStart.format('YYYY-MM-DD')}</small>`,
+              to: `${formatHijri(segEndCandidate, props.calendarMode as any)}<br><small>${segEndCandidate.format('YYYY-MM-DD')}</small>`,
               days: segDays
             })
           }
 
-          if (monthStart.format('iYYYY-iMM') === endMonthKey) break
+          if (formatHijri(monthStart, props.calendarMode as any).split('-').slice(0,2).join('-') === endMonthKey) break
           if (curMonth === 12) { curMonth = 1; curYear += 1 } else curMonth += 1
         }
       }
 
       rows.value = newRows
       summary.value = `العدد الإجمالي للأيام: ${total}`
-      summaryFrom.value = `${firstMomentForSegments.format('iYYYY-iMM-iDD')}<br><small>${firstMomentForSegments.format('YYYY-MM-DD')}</small>`
-      summaryTo.value = `${lastMomentForSegments.format('iYYYY-iMM-iDD')}<br><small>${lastMomentForSegments.format('YYYY-MM-DD')}</small>`
+      summaryFrom.value = `${formatHijri(firstMomentForSegments, props.calendarMode as any)}<br><small>${firstMomentForSegments.format('YYYY-MM-DD')}</small>`
+      summaryTo.value = `${formatHijri(lastMomentForSegments, props.calendarMode as any)}<br><small>${lastMomentForSegments.format('YYYY-MM-DD')}</small>`
       totalDays.value = total
 
     } catch (err: any) { error.value = err.message || 'خطأ' }
   }
+  return { years, months, startModel, endModel, startGregorian, endGregorian, includeStart, includeEnd, setToday, countDays, error, rows, summary, totalDays, summaryFrom, summaryTo, daysInHijriMonth, onStartGregorianUpdate, onEndGregorianUpdate }
 
-  return { startInput, endInput, includeStart, includeEnd, setToday, countDays, error, rows, summary, totalDays, summaryFrom, summaryTo }
 } })
 </script>

@@ -5,7 +5,7 @@
         <div class="row g-2">
           <div class="col-md-6">
             <label class="form-label">تاريخ التقاعد (Hijri)</label>
-            <input v-model="retirementDateInput" class="form-control" />
+            <HijriDatePicker v-model="retirementModel" :calendarMode="calendarMode" @update:gregorian="onRetirementGregorianUpdate" />
           </div>
           <div class="col-md-6">
             <label class="form-label">الرصيد السابق</label>
@@ -59,21 +59,27 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed } from 'vue'
-import { parseHijriStringToGregorian, formatHijri, setCalendarMode } from '../utils/calendar'
-import { calculateAccruals } from '../utils/accrual'
+import { parseHijriStringToGregorian, formatHijri, setCalendarMode, calculateAccruals, todayHijriString } from '../utils'
+import type { VacationRow } from '../utils'
+import HijriDatePicker from './HijriDatePicker.vue'
 
 export default defineComponent({
+  components: { HijriDatePicker },
   props: { calendarMode: { type: String, required: true } },
   setup(props) {
-    const retirementDateInput = ref('1445-01-01')
+    const retirementModel = ref<string>('1445-07-01')
+    const retirementGregorian = ref<any>(parseHijriStringToGregorian(retirementModel.value, props.calendarMode as any))
     const oldRemaining = ref<number>(0)
     const tblInput = ref('')
     const error = ref('')
     const results = ref<any[]>([])
 
+    function onRetirementGregorianUpdate(g: any) { retirementGregorian.value = g }
+
     function validateRetirement() {
       try {
-        const g = parseHijriStringToGregorian(retirementDateInput.value, props.calendarMode as any)
+        const g = retirementGregorian.value
+        if (!g || !g.isValid()) throw new Error('التاريخ غير صحيح')
         return g
       } catch (e: any) {
         error.value = e.message || 'التاريخ غير صحيح'
@@ -86,31 +92,36 @@ export default defineComponent({
       setCalendarMode(props.calendarMode as any)
       const retirement = validateRetirement()
       if (!retirement) return
-      if (!oldRemaining.value) {
+      if (!oldRemaining.value && oldRemaining.value !== 0) {
         error.value = 'يجب إدخال الرصيد السابق'
         return
       }
-      if (!tblInput.value.trim()) {
-        error.value = 'يجب إدخال الإجازات'
-        return
+      // if (!tblInput.value.trim()) {
+      //   error.value = 'يجب إدخال الإجازات'
+      //   return
+      // }
+      let vacations = [] as { idx: number, type: string, startDate: any, vacation: number }[];
+      if (tblInput.value.trim()) {
+        // parse table (tab separated rows, 3rd col start date, 5th duration)
+        const rows = tblInput.value.trim().split('\n').map(r => r.split('\t').map(c => c.trim()))
+        vacations = rows.map((cols, idx) => {
+          return {
+            idx,
+            type: cols[1] || '-',
+            startDate: parseHijriStringToGregorian(cols[2], props.calendarMode as any),
+            vacation: Number(cols[4]) || 0,
+          }
+        }).sort((a, b) => a.startDate.diff(b.startDate))
       }
-
-      // parse table (tab separated rows, 3rd col start date, 5th duration)
-      const rows = tblInput.value.trim().split('\n').map(r => r.split('\t').map(c => c.trim()))
-      const vacations = rows.map((cols, idx) => {
-        return {
-          idx,
-          type: cols[1] || '-',
-          startDate: parseHijriStringToGregorian(cols[2], props.calendarMode as any),
-          vacation: Number(cols[4]) || 0,
-        }
-      }).sort((a, b) => a.startDate.diff(b.startDate))
-
-      // push retirement as last row
+      // If no vacations, create a single period from baseline to retirement
+      if (vacations.length === 0) {
+        const baseline = parseHijriStringToGregorian('1439-07-02', props.calendarMode as any)
+        vacations.push({ idx: 0, type: '-', startDate: baseline, vacation: 0 })
+      }
       vacations.push({ idx: -2, type: '-', startDate: retirement, vacation: 0 })
-
       const calc = calculateAccruals(vacations, retirement, Number(oldRemaining.value))
-      results.value = calc.map(r => ({ ...r, startHijri: formatHijri(r.startDate) }))
+
+      results.value = calc.map((r: VacationRow) => ({ ...r, startHijri: formatHijri(r.startDate) }))
     }
 
     const finalCompensation = computed(() => {
@@ -121,7 +132,7 @@ export default defineComponent({
       return finalComp
     })
 
-    return { retirementDateInput, oldRemaining, tblInput, error, onCalc, results, finalCompensation }
+    return { retirementModel, retirementGregorian, oldRemaining, tblInput, error, onCalc, results, finalCompensation, onRetirementGregorianUpdate }
   }
 })
 </script>

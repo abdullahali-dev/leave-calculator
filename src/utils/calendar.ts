@@ -1,11 +1,56 @@
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
-import { toGregorian as u_toGregorian, toIslamic as u_toIslamic } from 'ummalqura-js'
+import * as umm from '@umalqura/core'
 
 dayjs.extend(utc)
 
 export type CalendarMode = 'ummalqura' | 'islamic'
 let currentMode: CalendarMode = 'ummalqura'
+
+function umm_toGregorian(hy:number, hm:number, hd:number) {
+  const anyUmm = umm as any
+  // Try multiple export shapes: direct method, .$ static, and default export
+  try {
+    if (anyUmm && typeof anyUmm.hijriToGregorian === 'function') {
+      return anyUmm.hijriToGregorian(hy, hm, hd)
+    }
+    if (anyUmm && anyUmm.$ && typeof anyUmm.$.hijriToGregorian === 'function') {
+      return anyUmm.$.hijriToGregorian(hy, hm, hd)
+    }
+    if (anyUmm && anyUmm.default && typeof anyUmm.default.hijriToGregorian === 'function') {
+      return anyUmm.default.hijriToGregorian(hy, hm, hd)
+    }
+    if (anyUmm && anyUmm.default && anyUmm.default.$ && typeof anyUmm.default.$.hijriToGregorian === 'function') {
+      return anyUmm.default.$.hijriToGregorian(hy, hm, hd)
+    }
+  } catch (e) {
+    // fall through to fallback
+    console.warn('umalqura adapter threw:', e)
+  }
+
+  // Fallback to simple arithmetical Hijri -> Gregorian conversion (less accurate than Umm al-Qura)
+  console.warn('Umm al-Qura conversion function not found; falling back to arithmetic Hijri conversion')
+  const jd = hijriToJulianDay(hy, hm, hd)
+  const g = julianDayToGregorian(jd)
+  return { gy: g.gy, gm: g.gm, gd: g.gd }
+}
+
+function umm_toIslamic(gy:number, gm:number, gd:number) {
+  const anyUmm = umm as any
+  try {
+    if (anyUmm && typeof anyUmm.gregorianToHijri === 'function') return anyUmm.gregorianToHijri(new Date(gy, gm - 1, gd))
+    if (anyUmm && anyUmm.$ && typeof anyUmm.$.gregorianToHijri === 'function') return anyUmm.$.gregorianToHijri(new Date(gy, gm - 1, gd))
+    if (anyUmm && anyUmm.default && typeof anyUmm.default.gregorianToHijri === 'function') return anyUmm.default.gregorianToHijri(new Date(gy, gm - 1, gd))
+    if (anyUmm && anyUmm.default && anyUmm.default.$ && typeof anyUmm.default.$.gregorianToHijri === 'function') return anyUmm.default.$.gregorianToHijri(new Date(gy, gm - 1, gd))
+  } catch (e) {
+    console.warn('umalqura adapter threw:', e)
+  }
+
+  // Fallback to arithmetic conversion via Julian Day
+  console.warn('Umm al-Qura reverse conversion not found; falling back to arithmetic Hijri conversion')
+  const jd = gregorianToJulianDay(gy, gm, gd)
+  return julianDayToHijri(jd)
+}
 
 export function setCalendarMode(mode: CalendarMode) {
   currentMode = mode
@@ -13,17 +58,45 @@ export function setCalendarMode(mode: CalendarMode) {
 
 // returns dayjs (gregorian) for a hijri string like '1443-03-20'
 export function parseHijriStringToGregorian(hijriStr: string, mode: CalendarMode = currentMode) {
-  const s = hijriStr.trim().replace(/[\/\.\s]+/g, '-')
-  const parts = s.split('-')
-  if (parts.length !== 3) throw new Error('تنسيق التاريخ غير مدعوم')
-  const hy = Number(parts[0]), hm = Number(parts[1]), hd = Number(parts[2])
-  if (isNaN(hy) || isNaN(hm) || isNaN(hd)) throw new Error('تنسيق التاريخ غير مدعوم')
+  // Accept many human-entered formats. Extract first three number groups (supports Arabic-Indic digits).
+  const original = String(hijriStr ?? '')
+  let s = original.trim()
+  // remove Arabic Hijri marker and non-date letters (keep digits and separators)
+  s = s.replace(/هـ|ه/g, ' ')
+  // normalize Arabic comma and other punctuation to space
+  s = s.replace(/[\u060C,()]/g, ' ')
+
+  // try to match three groups of digits (Arabic-Indic or ASCII)
+  const threeNums = s.match(/([0-9٠١٢٣٤٥٦٧٨٩]{3,4})[^0-9٠١٢٣٤٥٦٧٨٩]+([0-9٠١٢٣٤٥٦٧٨٩]{1,2})[^0-9٠١٢٣٤٥٦٧٨٩]+([0-9٠١٢٣٤٥٦٧٨٩]{1,2})/)
+  if (!threeNums) {
+    console.debug('parseHijriStringToGregorian: could not find 3-number pattern in', { original, normalized: s })
+    throw new Error('تنسيق التاريخ غير مدعوم')
+  }
+
+  function toAsciiDigits(str: string) {
+    const arabicNums = '٠١٢٣٤٥٦٧٨٩'
+    return str.replace(/[٠-٩]/g, (d) => String(arabicNums.indexOf(d)))
+  }
+
+  const hy = Number(toAsciiDigits(threeNums[1]))
+  const hm = Number(toAsciiDigits(threeNums[2]))
+  const hd = Number(toAsciiDigits(threeNums[3]))
+
+  if (isNaN(hy) || isNaN(hm) || isNaN(hd)) {
+    console.debug('parseHijriStringToGregorian: numeric parse failed', { hy, hm, hd, original })
+    throw new Error('تنسيق التاريخ غير مدعوم')
+  }
 
   if (mode === 'ummalqura') {
-    const g = u_toGregorian(hy, hm, hd) // returns {gy, gm, gd}
-    if (!g) throw new Error('تعذر تحويل التاريخ (Umm al-Qura)')
-    return dayjs.utc(`${g.gy}-${String(g.gm).padStart(2,'0')}-${String(g.gd).padStart(2,'0')}`)
+    const g = umm_toGregorian(hy, hm, hd) // returns {gy, gm, gd}
+    if (g && typeof g.gy === 'number') {
+      // note: umalqura returns zero-based month (0=Jan), so add 1 when building ISO date
+      return dayjs.utc(`${g.gy}-${String((g.gm ?? 0) + 1).padStart(2,'0')}-${String(g.gd).padStart(2,'0')}`)
+    }
+    // fallback to arithmetic
+    console.warn('Umm al-Qura conversion failed; falling back to arithmetic', { hy, hm, hd })
   }
+
   // simple arithmetical conversion (tabular)
   const jd = hijriToJulianDay(hy, hm, hd)
   const g = julianDayToGregorian(jd)
@@ -38,8 +111,8 @@ export function formatHijri(gregorian: any, mode: CalendarMode = currentMode) {
     const y = Number(d.format('YYYY'))
     const m = Number(d.format('MM'))
     const day = Number(d.format('DD'))
-    // find islamic date via reverse conversion using ummalqura-js
-    const h = u_toIslamic(y, m, day)
+    // find islamic date via reverse conversion using umalqura/core
+    const h = umm_toIslamic(y, m, day)
     if (!h) return ''
     return `${h.hy}-${String(h.hm).padStart(2,'0')}-${String(h.hd).padStart(2,'0')}`
   }
@@ -52,6 +125,44 @@ export function formatHijri(gregorian: any, mode: CalendarMode = currentMode) {
 export function todayHijriString(mode: CalendarMode = currentMode) {
   const now = dayjs()
   return formatHijri(now, mode)
+}
+
+export function getHijriParts(d: dayjs.Dayjs, mode: CalendarMode = currentMode) {
+  // Extract Hijri year, month, day from a Gregorian dayjs object
+  const jd = gregorianToJulianDay(Number(d.format('YYYY')), Number(d.format('MM')), Number(d.format('DD')))
+  return julianDayToHijri(jd)
+}
+
+export function hijriPartsToGregorian(hy:number, hm:number, hd:number, mode: CalendarMode = currentMode) {
+  // returns dayjs for the given Hijri parts
+  if (mode === 'ummalqura') {
+    const g = umm_toGregorian(hy, hm, hd)
+    if (g && typeof g.gy === 'number') {
+      // umalqura returns zero-based month
+      return dayjs.utc(`${g.gy}-${String((g.gm ?? 0) + 1).padStart(2,'0')}-${String(g.gd).padStart(2,'0')}`)
+    }
+  }
+  const jd = hijriToJulianDay(hy, hm, hd)
+  const g = julianDayToGregorian(jd)
+  return dayjs.utc(`${g.gy}-${String(g.gm).padStart(2,'0')}-${String(g.gd).padStart(2,'0')}`)
+}
+
+export function daysInHijriMonth(hy:number, hm:number, mode: CalendarMode = currentMode) {
+  if (mode === 'ummalqura') {
+    const anyUmm = umm as any
+    try {
+      if (typeof anyUmm.getDaysInMonth === 'function') return anyUmm.getDaysInMonth(hy, hm)
+      if (anyUmm && anyUmm.$ && typeof anyUmm.$.getDaysInMonth === 'function') return anyUmm.$.getDaysInMonth(hy, hm)
+      if (anyUmm && anyUmm.default && typeof anyUmm.default.$ === 'object' && typeof anyUmm.default.$.getDaysInMonth === 'function') return anyUmm.default.$.getDaysInMonth(hy, hm)
+    } catch (e) {
+      console.warn('umalqura getDaysInMonth failed', e)
+    }
+  }
+  // fallback: compute first day of next month minus first day of this month
+  const start = hijriPartsToGregorian(hy, hm, 1, mode)
+  const nextMonth = hm === 12 ? { hy: hy + 1, hm: 1 } : { hy, hm: hm + 1 }
+  const next = hijriPartsToGregorian(nextMonth.hy, nextMonth.hm, 1, mode)
+  return Math.round(next.diff(start, 'day'))
 }
 
 // ---- helper functions: JD conversions (arithmetical Hijri)
