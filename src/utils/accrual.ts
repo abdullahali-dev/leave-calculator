@@ -51,12 +51,22 @@ export function calculateAccruals(vacations: VacationRow[], retirement: dayjs.Da
     const end = row.startDate
 
     const days = calculateHijriDays(start, end)
-
+    // console.log(`${formatHijri(start, 'ummalqura')} => ${formatHijri(end, 'ummalqura')} = ${days} days * 0.1 = ${days * 0.1}`);
     const accrual = days * 0.1;
-    const accrualInteger = Math.floor(accrual);
+    let accrualInteger = 0;
+    if (i + 1 == v.length) {
+      accrualInteger = accrual;
+    } else {
+      accrualInteger = Math.floor(accrual);
+    }
     const accrualDecimal = accrual - accrualInteger;
     accrualCarry = roundToTwo(accrualCarry + accrualDecimal);
-    const carryInteger = Math.floor(accrualCarry);
+    let carryInteger = 0;
+    if (i + 1 == v.length) {
+      carryInteger = accrualCarry;
+    } else {
+      carryInteger = Math.floor(accrualCarry);
+    }
     const addToAvailable = accrualInteger + carryInteger;
     accrualCarry = roundToTwo(accrualCarry - carryInteger);
     row.available = roundToTwo((row.available ?? 0) + addToAvailable);
